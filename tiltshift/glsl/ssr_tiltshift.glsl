@@ -1,6 +1,8 @@
 
 // ---- srvraj311_tiltshift: distance-based tilt-shift depth of field (Cities: Skylines II style) ----------------------------
-// Appended to the base game's shaders/misc/ssr_apply.fs by tools/build.py; the game's own main() is renamed ssrMain().
+// Appended to the base game's shaders/misc/ssr_apply.fs by the TF3 Tilt-Shift app (tiltshift/shaders.py), which renames the
+// game's own main() to ssrMain() and rewrites the `const` values below from the app's settings. The values written here
+// are the defaults (the app's "Reset to defaults").
 //
 // 1. Focus: a near-weighted (soft minimum) average distance over 63 points in a patch below the screen centre (sky
 //    ignored), so the nearest object in the patch - a train in front of a field - wins. A pole, wire or
@@ -12,7 +14,6 @@
 //    by their distance, so the taps never slide across the image and fine detail does not shimmer while the blur changes.
 //    Taps sharper than the pixel are ignored, so sharp poles and trees do not smear halos onto the background behind them.
 //    (A true delay is impossible: the engine gives this pass no memory of earlier frames.)
-// Tune the values below, then press Right Alt + T in game to reload shaders.
 
 const float TS_MAX_BLUR = 9.75;    // largest blur radius, in pixels of a 1080p screen (scales with resolution)
 
@@ -27,13 +28,20 @@ const float TS_FOCUS_NEAR_BIAS = 1.6; // how strongly nearer surfaces win the fo
 // Ranges in log2(distance / focus): 1.0 = twice as far (or half as far). Values blend from CLOSE to FAR with the zoom.
 const float TS_ZOOM_CLOSE = 40.0;  // metres: focus at or below this uses the *_CLOSE values (vehicle follow, street level)
 const float TS_ZOOM_FAR   = 400.0; // metres: focus at or beyond this uses the *_FAR values (normal city view)
-const vec4  TS_RANGE_CLOSE = vec4(0.7, 1.3, 0.8, 2.0);  // near sharp, near ramp, far sharp, far ramp
-const vec4  TS_RANGE_FAR   = vec4(0.3, 1.0, 0.4, 1.3);
-const float TS_AMOUNT_CLOSE = 0.85;                     // overall strength zoomed in
-const float TS_AMOUNT_FAR   = 1.0;                      // overall strength zoomed out
+const float TS_CLOSE_NEAR_SHARP = 0.7;  // zoomed in: sharp this far in front of the focus
+const float TS_CLOSE_NEAR_RAMP  = 1.3;  // ... then blur builds up to full over this much more
+const float TS_CLOSE_FAR_SHARP  = 0.8;  // zoomed in: sharp this far behind the focus
+const float TS_CLOSE_FAR_RAMP   = 2.0;
+const float TS_FAR_NEAR_SHARP   = 0.3;  // zoomed out: the same four
+const float TS_FAR_NEAR_RAMP    = 1.0;
+const float TS_FAR_FAR_SHARP    = 0.4;
+const float TS_FAR_FAR_RAMP     = 1.3;
+const float TS_AMOUNT_CLOSE = 0.85; // overall strength zoomed in
+const float TS_AMOUNT_FAR   = 1.0;  // overall strength zoomed out
 
 // Cab view: the camera looks almost level and the focus is close. There the bottom half of the screen (track and cab
 // surroundings just ahead) is kept sharp. Both conditions fade in smoothly, so switching camera does not pop.
+const float TS_CAB_ENABLED     = 1.0;   // 1 = keep the lower screen sharp in cab view, 0 = off
 const float TS_CAB_PITCH_LEVEL = 0.10;  // sin(downward pitch) at or below which the camera counts as level (~6 degrees)
 const float TS_CAB_PITCH_DOWN  = 0.25;  // ... and at or above which it does not (~14 degrees; follow and city cameras)
 const float TS_CAB_FOCUS_NEAR  = 150.0; // metres: focus at or below this counts as close
@@ -96,9 +104,10 @@ void main() {
 
 	float focus = tsFocus();
 	float zoom = smoothstep(TS_ZOOM_CLOSE, TS_ZOOM_FAR, focus);
-	vec4 range = mix(TS_RANGE_CLOSE, TS_RANGE_FAR, zoom);
+	vec4 range = mix(vec4(TS_CLOSE_NEAR_SHARP, TS_CLOSE_NEAR_RAMP, TS_CLOSE_FAR_SHARP, TS_CLOSE_FAR_RAMP),
+			vec4(TS_FAR_NEAR_SHARP, TS_FAR_NEAR_RAMP, TS_FAR_FAR_SHARP, TS_FAR_FAR_RAMP), zoom);
 	float down = u_ssao.invViewMat[2].z;             // camera looks along -Z; in the z-up world this is sin(downward pitch)
-	tsCab = (1.0 - smoothstep(TS_CAB_PITCH_LEVEL, TS_CAB_PITCH_DOWN, down)) *
+	tsCab = TS_CAB_ENABLED * (1.0 - smoothstep(TS_CAB_PITCH_LEVEL, TS_CAB_PITCH_DOWN, down)) *
 			(1.0 - smoothstep(TS_CAB_FOCUS_NEAR, TS_CAB_FOCUS_FAR, focus));
 	float amount = mix(TS_AMOUNT_CLOSE, TS_AMOUNT_FAR, zoom);
 

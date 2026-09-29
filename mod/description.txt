@@ -1,5 +1,0 @@
-Gives Transport Fever 3 a tilt-shift "miniature" look, like a photograph of a model railway: the spot at the centre of the
-screen stays sharp, things nearer and further away blur, and colours get a small boost. The effect fades out at street level.
-
-Visual only: it replaces two of the game's post-process shaders (hdr/compose.fs and misc/ssr_apply.fs) and does not touch saves.
-It will clash with any other mod that replaces those files.
