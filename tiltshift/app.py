@@ -9,6 +9,8 @@ from . import APP_NAME, AUTHOR, __version__, game, settings, shaders
 
 RELOAD_HINT = "In game press Right Alt + T to reload shaders (or restart the game)."
 AUTO_APPLY_DELAY_MS = 400
+HINT_BG, HINT_FG, HINT_FLASH = "#fff4c2", "#7a4b00", "#ffd84d"    # the always-visible "Right Alt + T" banner
+HINT_FLASH_MS = 1500
 
 
 def _decimals(step: float) -> int:
@@ -98,6 +100,12 @@ class App:
         style.configure("Help.TLabel", foreground="#6b6b6b", font=("Segoe UI", 8))
         style.configure("Status.TLabel", foreground="#1f5f99")
         style.configure("Accent.TButton", font=("Segoe UI Semibold", 10))
+        style.configure("Hint.TFrame", background=HINT_BG)
+        style.configure("Hint.TLabel", background=HINT_BG, foreground=HINT_FG, font=("Segoe UI", 10))
+        style.configure("HintKey.TLabel", background=HINT_FG, foreground="#ffffff", font=("Segoe UI Semibold", 11),
+                        padding=(8, 2))
+        style.configure("HintFlash.TFrame", background=HINT_FLASH)
+        style.configure("HintFlash.TLabel", background=HINT_FLASH, foreground=HINT_FG, font=("Segoe UI", 10))
 
     def _build(self) -> None:
         outer = ttk.Frame(self.root, padding=16)
@@ -134,7 +142,30 @@ class App:
         ttk.Button(buttons, text="Reset to defaults", command=self.reset).pack(side="right")
         ttk.Button(buttons, text="Restore original shaders", command=self.restore).pack(side="right", padx=8)
 
+        self.hint = ttk.Frame(outer, style="Hint.TFrame", padding=(12, 8))
+        self.hint.pack(fill="x", pady=(12, 0))
+        self.hint_labels = [
+            ttk.Label(self.hint, text="After applying, go in game and press", style="Hint.TLabel"),
+            ttk.Label(self.hint, text="Right Alt + T", style="HintKey.TLabel"),
+            ttk.Label(self.hint, text="to reload shaders (or restart the game).", style="Hint.TLabel"),
+        ]
+        for label in self.hint_labels:
+            label.pack(side="left", padx=(0, 6))
+        self.hint_flash = None
+
         ttk.Label(outer, textvariable=self.status, style="Status.TLabel", wraplength=660).pack(anchor="w", pady=(10, 0))
+
+    def _flash_hint(self) -> None:
+        """Briefly brighten the Right Alt + T banner so it is noticed right after the shaders change."""
+        if self.hint_flash:
+            self.root.after_cancel(self.hint_flash)
+        self._hint_style("HintFlash")
+        self.hint_flash = self.root.after(HINT_FLASH_MS, lambda: self._hint_style("Hint"))
+
+    def _hint_style(self, name: str) -> None:
+        self.hint.configure(style=f"{name}.TFrame")
+        for label in (self.hint_labels[0], self.hint_labels[2]):
+            label.configure(style=f"{name}.TLabel")
 
     # ---- values ----
     def _load_values(self, values: dict[str, float]) -> None:
@@ -188,6 +219,8 @@ class App:
             return
         settings.save(self.values(), str(path))
         self.status.set(("Applied: " + ", ".join(done) + ". " if done else "Nothing to apply. ") + RELOAD_HINT)
+        if done:
+            self._flash_hint()
 
     def restore(self) -> None:
         path = self._game()
@@ -200,6 +233,8 @@ class App:
             return
         self.status.set(("Restored the original shaders. " + RELOAD_HINT) if done
                         else "The game already uses its original shaders.")
+        if done:
+            self._flash_hint()
 
     def reset(self) -> None:
         self._load_values(settings.defaults())

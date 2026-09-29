@@ -69,6 +69,10 @@ python -m pip install pyinstaller
 python tools/build_exe.py                    # -> dist/TF3TiltShift.exe
 ```
 
+To publish a release, push a version tag (for example `git tag v1.0.1 && git push origin v1.0.1`). The
+[Release workflow](.github/workflows/release.yml) runs the tests, builds the single-file `TF3TiltShift.exe` and attaches
+it to a GitHub Release.
+
 - [tiltshift/app.py](tiltshift/app.py): the window
 - [tiltshift/settings.py](tiltshift/settings.py): the list of settings and saving them
 - [tiltshift/shaders.py](tiltshift/shaders.py): builds the patched shader text
