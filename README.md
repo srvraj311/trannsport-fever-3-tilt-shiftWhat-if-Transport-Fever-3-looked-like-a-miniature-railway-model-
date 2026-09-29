@@ -1,51 +1,79 @@
-# Tilt-Shift Miniature (Transport Fever 3)
+# TF3 Tilt-Shift
 
-A visual mod that gives TF3 a Cities: Skylines-style "miniature" look. The effect is a shallow depth of field centred on whatever
-is in the middle of the screen, plus a small colour boost.
+A Cities: Skylines-style **tilt-shift / depth-of-field** look for **Transport Fever 3**, with a small settings app.
+
+The focus point is found automatically and prefers the nearest object, such as the train you follow. Things in front of or
+behind it blur more the further they are from it. The sharp range follows the zoom, and a slight colour boost gives the
+"photographed model" feel. By [srvraj311](https://github.com/srvraj311).
+
+## Use
+
+1. Download `TF3TiltShift.exe` from the Releases page and run it. No install is needed.
+2. It finds Transport Fever 3 in your Steam libraries. If it doesn't, use **Browse...** to pick the game folder.
+3. Adjust the settings if you like, then press **Apply to game**.
+4. In game, press **Right Alt + T** to reload shaders, or just start the game.
+
+**Restore original shaders** puts the game's own files back. **Reset to defaults** returns every slider to the default
+look. Turn on **Apply automatically** to see changes live: move a slider, then press Right Alt + T in game.
+
+Settings are saved to `%APPDATA%\srvraj311\TF3TiltShift\settings.json`.
+
+| Tab | Settings |
+|---|---|
+| Blur | on/off, blur size, quality (samples per pixel) |
+| Focus | where the focus is measured, the size of that area, how strongly near objects win it |
+| Zoom | the distances counted as "close up" and "zoomed out", and the strength at each |
+| Sharp range | how far in front of and behind the focus stays sharp, and how gradually blur builds up, for close-up and zoomed-out views |
+| Cab view | keep the lower screen sharp when the camera looks level and close (cab view) |
+| Colour | colour boost on/off, saturation, contrast |
+
+## Good to know
+
+- **It is not a Mod Hub mod.** TF3 loads its shaders only from its own install folder, and a mod folder cannot replace
+  them, which was tested in game. The app edits two of the game's post-process shaders instead:
+  `base/content/rendering/programs/shaders/hdr/compose.fs` and `.../misc/ssr_apply.fs`. Each original is kept beside
+  it as `*.tiltshift_orig`.
+- **Game updates and Steam "Verify integrity"** put the original shaders back. Open the app and press **Apply to game**
+  again. If an update changed those shaders in a way the app doesn't know, it refuses to apply and says so, instead of
+  writing a broken shader.
+- **Works with screen-space reflections on or off.** Menus and other UI are never blurred.
+- **Other shader tweaks** that edit the same two files will conflict.
+- **No game code is shipped.** The app contains only its own GLSL snippets. It reads your installed game's shaders and
+  patches them on your PC.
+- **Motion blur isn't possible.** The engine gives these shaders no motion data and no memory of earlier frames.
 
 ## How it works
 
-TF3 compiles its GLSL shaders from `base/content/rendering/programs` on start (see `local/shader_cache/cache.lua`). It always
-reads them from the base game, so a mod folder cannot replace them: the probe build proved this on 2026-09-30. `tools/install.py`
-therefore writes patched copies of two full-screen passes over the game's own files. The originals are kept beside them as
-`*.tiltshift_orig`, and `python tools/install.py --restore` puts them back. A game update or Steam's "verify integrity" also
-restores them; re-run the build and install afterwards.
+- `ssr_apply.fs`, a full-screen pass that has the depth buffer: the game's `main()` is renamed `ssrMain()`, and our
+  `main()` runs it, then blurs.
+  - **Focus**: a near-weighted average distance over 63 points in a patch just below the screen centre, ignoring sky.
+    It stays steady when a pole or wire passes through.
+  - **Blur amount**: by distance only, as `log2(distance / focus)`, so it scales with the zoom. There are separate near
+    and far ranges, like CS2's Near/Far Start/End, blended between close-up and zoomed-out values.
+  - **Gather**: 48 taps at fixed screen offsets, so nothing shimmers while the blur changes. Taps sharper than the pixel
+    are ignored, so there are no halos around sharp objects.
+- `compose.fs`, the final tone-mapping pass: the colour boost.
 
-| File | Receives from the engine | We add |
-|---|---|---|
-| `shaders/misc/ssr_apply.fs` | lit scene, **depth buffer**, camera matrices | distance-based tilt-shift blur (`shaders/ssr_tiltshift.glsl`) |
-| `shaders/hdr/compose.fs` | lit scene + bloom (final tone mapping) | colour boost; in the `simple` variant also the band blur |
+The defaults are the `const` values in [tiltshift/glsl/](tiltshift/glsl/). The app rewrites those values from its
+settings.
 
-The base files are **not** stored here. `tools/build.py` reads them from the game and applies small text patches. Each patch
-anchor must match exactly once, so a game update that changes a file stops the build instead of producing broken shaders.
+## From source
 
-Motion blur is not possible this way. The engine gives shaders no motion data and no record of the previous frame, and a mod
-cannot add new shader inputs.
-
-## Variants
+Needs Python 3.10+ on Windows. No packages are needed to run it; building the .exe needs PyInstaller.
 
 ```
-python tools/build.py probe    # test: left third red (compose runs), middle third blue with distance (depth reads), right third green (ssr_apply runs)
-python tools/build.py depth    # the real mod
-python tools/build.py simple   # fallback when ssr_apply does not run: screen-band blur, no depth
-python tools/install.py        # patch the game's shaders (game must be closed)
-python tools/install.py --restore
+python -m tiltshift                          # the app
+python -m tiltshift apply | restore | probe  # without the window; probe = coloured test to check the shaders still load
+python -m unittest discover -s tests -t .    # tests (no game needed)
+python -m pip install pyinstaller
+python tools/build_exe.py                    # -> dist/TF3TiltShift.exe
 ```
 
-## Tuning
+- [tiltshift/app.py](tiltshift/app.py): the window
+- [tiltshift/settings.py](tiltshift/settings.py): the list of settings and saving them
+- [tiltshift/shaders.py](tiltshift/shaders.py): builds the patched shader text
+- [tiltshift/game.py](tiltshift/game.py): finds the game, applies and restores with backups
 
-The settings are the `const float TS_*` values at the top of `shaders/ssr_tiltshift.glsl` and `shaders/compose_functions.glsl`.
-To tune while the game runs, edit the patched files under `Transport Fever 3/base/content/rendering/programs/shaders/` and press
-**Right Alt + T**, the game's debug "reload shaders" key. Copy good values back here afterwards.
+## Licence
 
-Shader errors are logged in `local/crash_dump/stdout.txt`.
-
-## Status
-
-Working in game (2026-09-30, reflections off). The tuned look is saved in `shaders/ssr_tiltshift.glsl`:
-- focus: a near-weighted average over a patch below the screen centre
-- blur: by distance only, using Cities: Skylines II-style near/far ranges that follow the zoom
-- flicker: taps at fixed screen offsets, no halos
-- cab view: the bottom half stays sharp
-
-The probe build and the `simple` variant are kept for diagnosing a future game update.
+MIT, see [LICENSE](LICENSE). Transport Fever 3 and its shaders belong to Urban Games; this project ships none of them.
